@@ -17,17 +17,16 @@ BuildArch:	noarch
 
 BuildRequires:	jpackage-utils
 BuildRequires:	ant
-BuildRequires:	annotations
-BuildRequires:	mvn(org.bouncycastle:bcprov-jdk15on)
-BuildRequires:	mvn(org.bouncycastle:bcmail-jdk15on)
+BuildRequires:	bouncycastle
+BuildRequires:	bouncycastle-pkix
+BuildRequires:	jetbrainsannotations
 BuildRequires:	jsocks
-BuildRequires:	mvn(junit:junit)
+BuildRequires:	junit
 
-Requires:	java-headless >= 1.5
+Requires:	java-headless
 Requires:	jpackage-utils
-Requires:	mvn(org.bouncycastle:bcprov-jdk15on)
-Requires:	mvn(org.bouncycastle:bcpkix-jdk15on)
-Requires:	mvn(org.bouncycastle:bcmail-jdk15on)
+Requires:	bouncycastle
+Requires:	bouncycastle-pkix
 Requires:	jsocks
 
 %description
@@ -80,7 +79,7 @@ sed -i -e 's|SocksServerSocket(proxy.createSocksProxy(),|SocksServerSocket(proxy
 
 %build
 # compile
-export CLASSPATH=$(build-classpath annotations bcprov bcpkix jsocks junit):$CLASSPATH #bcmail
+export CLASSPATH=$(build-classpath jetbrains-annotations bcprov bcpkix jsocks junit):$CLASSPATH
 %ant jars
 
 # add the index to jars
