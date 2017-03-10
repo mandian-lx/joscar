@@ -1,0 +1,338 @@
+diff -ru joscar-0.9.3r523.orig/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/ChatRoomManager.java joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/ChatRoomManager.java
+--- joscar-0.9.3r523.orig/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/ChatRoomManager.java	2015-03-27 22:07:49.000000000 +0100
++++ joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/ChatRoomManager.java	2016-04-08 01:20:21.886484887 +0200
+@@ -58,6 +58,8 @@
+ import net.kano.joustsim.oscar.oscar.service.icbm.IcbmService;
+ import org.jetbrains.annotations.NotNull;
+ 
++import org.bouncycastle.operator.OperatorCreationException;
++
+ import javax.crypto.SecretKey;
+ import java.security.cert.CertificateExpiredException;
+ import java.security.cert.CertificateNotYetValidException;
+@@ -311,6 +313,8 @@
+                 aimConnection.getLocalPrefs());
+             //noinspection ConstantConditions
+             assert roomKey != null;
++          } catch (OperatorCreationException e) {
++	    reason = InvalidInvitationReason.INVALID_SIGNATURE;
+           } catch (NoPrivateKeyException e) {
+             reason = InvalidInvitationReason.NO_LOCAL_KEYS;
+           } catch (CertificateNotYetValidException e) {
+diff -ru joscar-0.9.3r523.orig/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/EncryptedChatRoomMessageFactory.java joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/EncryptedChatRoomMessageFactory.java
+--- joscar-0.9.3r523.orig/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/EncryptedChatRoomMessageFactory.java	2015-03-27 22:07:49.000000000 +0100
++++ joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/EncryptedChatRoomMessageFactory.java	2016-04-08 01:20:21.886484887 +0200
+@@ -47,9 +47,14 @@
+ import javax.crypto.BadPaddingException;
+ import javax.crypto.spec.IvParameterSpec;
+ 
++import org.bouncycastle.operator.ContentSigner;
++import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
++import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
+ import org.bouncycastle.asn1.cms.EncryptedContentInfo;
+ import org.bouncycastle.asn1.DERObjectIdentifier;
++import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+ import org.bouncycastle.asn1.DEROctetString;
++import org.bouncycastle.asn1.ASN1OctetString;
+ import org.bouncycastle.asn1.BERConstructedOctetString;
+ import org.bouncycastle.asn1.BERTaggedObject;
+ import org.bouncycastle.asn1.ASN1EncodableVector;
+@@ -61,6 +66,8 @@
+ import org.bouncycastle.cms.CMSSignedData;
+ import org.bouncycastle.cms.CMSProcessableByteArray;
+ import org.bouncycastle.cms.CMSException;
++import org.bouncycastle.cms.jcajce.JcaSignerInfoGeneratorBuilder;
++import org.bouncycastle.operator.OperatorCreationException;
+ 
+ import java.io.ByteArrayOutputStream;
+ import java.io.IOException;
+@@ -72,6 +79,7 @@
+ import java.security.NoSuchProviderException;
+ import java.security.InvalidKeyException;
+ import java.security.InvalidAlgorithmParameterException;
++import java.security.cert.CertificateEncodingException;
+ 
+ public class EncryptedChatRoomMessageFactory implements ChatRoomMessageFactory {
+     private AimConnection aimConnection;
+@@ -97,6 +105,10 @@
+         byte[] data;
+         try {
+             data = getEncodedMessageData(message);
++        } catch (OperatorCreationException e) {
++            throw new EncodingException(e);
++        } catch (CertificateEncodingException e) {
++            throw new EncodingException(e);
+         } catch (IOException e) {
+             throw new EncodingException(e);
+         } catch (NoSuchAlgorithmException e) {
+@@ -125,7 +137,7 @@
+             NoSuchAlgorithmException, NoSuchProviderException,
+             NoSuchPaddingException, InvalidKeyException,
+             InvalidAlgorithmParameterException, IllegalBlockSizeException,
+-            BadPaddingException, CMSException {
++            BadPaddingException, CMSException , OperatorCreationException, CertificateEncodingException {
+         byte[] dataToEncrypt = getCmsSignedBlock(message);
+ 
+         byte[] iv = new byte[16];
+@@ -137,16 +149,16 @@
+         byte[] encrypted = c.doFinal(dataToEncrypt);
+ 
+         EncryptedContentInfo eci = new EncryptedContentInfo(
+-                new DERObjectIdentifier("1.2.840.113549.1.7.1"),
++                new ASN1ObjectIdentifier("1.2.840.113549.1.7.1"),
+                 new AlgorithmIdentifier(
+                         new DERObjectIdentifier("2.16.840.1.101.3.4.1.42"),
+                         new DEROctetString(iv)),
+-                new BERConstructedOctetString(encrypted));
++                ASN1OctetString.getInstance(encrypted));
+         EncryptedData ed = new EncryptedData(eci.getContentType(),
+                 eci.getContentEncryptionAlgorithm(),
+                 eci.getEncryptedContent());
+ 
+-        BERTaggedObject bert = new BERTaggedObject(0, ed.getDERObject());
++        BERTaggedObject bert = new BERTaggedObject(0, ed.toASN1Primitive());
+         DERObjectIdentifier rootid
+                 = new DERObjectIdentifier("1.2.840.113549.1.7.6");
+         ASN1EncodableVector vec = new ASN1EncodableVector();
+@@ -162,7 +174,7 @@
+ 
+     private byte[] getCmsSignedBlock(String msg)
+             throws IOException, NoSuchProviderException,
+-            NoSuchAlgorithmException, CMSException {
++            NoSuchAlgorithmException, CMSException, CertificateEncodingException, OperatorCreationException {
+         ByteArrayOutputStream bout = new ByteArrayOutputStream();
+         OutputStreamWriter osw = new OutputStreamWriter(bout, "US-ASCII");
+         osw.write("Content-Transfer-Encoding: binary\r\n"
+@@ -187,17 +199,23 @@
+     }
+ 
+     private byte[] signData(byte[] dataToSign) throws NoSuchProviderException,
+-            NoSuchAlgorithmException, CMSException, IOException {
++            NoSuchAlgorithmException, CMSException, IOException, OperatorCreationException, CertificateEncodingException {
+         CMSSignedDataGenerator sgen = new CMSSignedDataGenerator();
+         TrustPreferences localPrefs = aimConnection.getLocalPrefs();
+         KeyPair signingKeys = localPrefs.getPrivateKeysPreferences()
+                 .getKeysInfo().getSigningKeys();
+-        sgen.addSigner(signingKeys.getPrivateKey(),
+-                signingKeys.getPublicCertificate(),
+-                CMSSignedDataGenerator.DIGEST_MD5);
++        ContentSigner md5Signer = new JcaContentSignerBuilder(CMSSignedDataGenerator.DIGEST_MD5).setProvider("BC").build(signingKeys.getPrivateKey());
++        sgen.addSignerInfoGenerator(
++                new JcaSignerInfoGeneratorBuilder(
++                     new JcaDigestCalculatorProviderBuilder().setProvider("BC").build())
++                     .build(md5Signer, signingKeys.getPublicCertificate()));
++//        sgen.addSigner(signingKeys.getPrivateKey(),
++//                signingKeys.getPublicCertificate(),
++//                CMSSignedDataGenerator.DIGEST_MD5);
+         CMSSignedData csd = sgen.generate(
+                 new CMSProcessableByteArray(dataToSign),
+-                true, "BC");
++                true);
++//                true, "BC");
+         return csd.getEncoded();
+ 
+     }
+diff -ru joscar-0.9.3r523.orig/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/KeyExtractionTools.java joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/KeyExtractionTools.java
+--- joscar-0.9.3r523.orig/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/KeyExtractionTools.java	2015-03-27 22:07:49.000000000 +0100
++++ joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms/KeyExtractionTools.java	2016-04-08 01:47:30.584328140 +0200
+@@ -53,6 +53,9 @@
+ import org.bouncycastle.cms.CMSProcessableByteArray;
+ import org.bouncycastle.cms.CMSSignedData;
+ import org.bouncycastle.cms.SignerInformation;
++import org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder;
++import org.bouncycastle.cms.SignerInformationVerifier;
++import org.bouncycastle.operator.OperatorCreationException;
+ import org.jetbrains.annotations.NotNull;
+ 
+ import javax.crypto.BadPaddingException;
+@@ -75,24 +78,26 @@
+   @NotNull public static SecretKey extractChatKey(ByteBlock data,
+       X509Certificate buddySigningCert, TrustPreferences trustPrefs)
+       throws NoPrivateKeyException, CertificateNotYetValidException,
+-      CertificateExpiredException, BadKeyException {
++      CertificateExpiredException, BadKeyException, CertificateNotYetValidException,
++      OperatorCreationException {
+ 
+     KeyPair myEncryptingKeys = getMyEncryptingKeys(trustPrefs);
+ 
+     try {
+       CMSSignedData csd
+           = new CMSSignedData(ByteBlock.createInputStream(data));
++      SignerInformationVerifier siv = new JcaSimpleSignerInfoVerifierBuilder().setProvider("BC").build(buddySigningCert);
+       Collection<SignerInformation> signers = csd.getSignerInfos()
+           .getSigners();
+       for (SignerInformation signer : signers) {
+         boolean verified;
+-        try {
+-          verified = signer.verify(buddySigningCert, "BC");
+-        } catch (CertificateExpiredException e) {
+-          throw e;
+-        } catch (CertificateNotYetValidException e) {
+-          throw e;
+-        }
++//        try {
++          verified = signer.verify(siv);
++//        } catch (CertificateExpiredException e) {
++//          throw e;
++//        } catch (CertificateNotYetValidException e) {
++//          throw e;
++//        }
+         if (!verified) throw new BadKeyException();
+       }
+       CMSProcessableByteArray cpb
+@@ -114,7 +119,7 @@
+       DERObjectIdentifier keyoid
+           = (DERObjectIdentifier) root.getObjectAt(1);
+ 
+-      String encoid = ktr.getKeyEncryptionAlgorithm().getObjectId()
++      String encoid = ktr.getKeyEncryptionAlgorithm().getAlgorithm()
+           .getId();
+       Cipher cipher = Cipher.getInstance(encoid, "BC");
+       cipher.init(Cipher.DECRYPT_MODE,
+Only in joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/chatrooms: KeyExtractionTools.java.orig
+diff -ru joscar-0.9.3r523.orig/client/src/net/kano/joustsim/oscar/oscar/service/icbm/secureim/SecureAimDecoder.java joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/icbm/secureim/SecureAimDecoder.java
+--- joscar-0.9.3r523.orig/client/src/net/kano/joustsim/oscar/oscar/service/icbm/secureim/SecureAimDecoder.java	2015-03-27 22:07:50.000000000 +0100
++++ joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/icbm/secureim/SecureAimDecoder.java	2016-04-08 01:20:21.889818203 +0200
+@@ -44,11 +44,16 @@
+ import net.kano.joscar.OscarTools;
+ import org.bouncycastle.cms.CMSEnvelopedData;
+ import org.bouncycastle.cms.CMSException;
++import org.bouncycastle.cms.CMSVerifierCertificateNotValidException;
+ import org.bouncycastle.cms.CMSProcessable;
+ import org.bouncycastle.cms.CMSSignedData;
+ import org.bouncycastle.cms.KeyTransRecipientInformation;
+ import org.bouncycastle.cms.SignerInformation;
+ import org.bouncycastle.cms.SignerInformationStore;
++import org.bouncycastle.cms.SignerInformationVerifier;
++import org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder;
++import org.bouncycastle.cms.jcajce.JceKeyTransEnvelopedRecipient;
++import org.bouncycastle.operator.OperatorCreationException;
+ 
+ import java.io.InputStream;
+ import java.security.NoSuchAlgorithmException;
+@@ -65,7 +70,8 @@
+             ByteBlock encryptedData)
+             throws CMSException, NoSuchProviderException,
+             NoSuchAlgorithmException, InvalidSignatureException,
+-            NoBuddyKeysException, NoLocalKeysException, EmptyMessageException {
++            NoBuddyKeysException, NoLocalKeysException, EmptyMessageException, OperatorCreationException,
++            CertificateNotYetValidException, CertificateExpiredException {
+ 
+         CertificatePairHolder buddyCerts = getBuddyCerts();
+         if (buddyCerts == null) throw new NoBuddyKeysException();
+@@ -90,7 +96,8 @@
+         KeyTransRecipientInformation rinfo
+                 = (KeyTransRecipientInformation) recip.iterator().next();
+ 
+-        byte[] content = rinfo.getContent(signingKey, "BC");
++        byte[] content = rinfo.getContent(
++                    new JceKeyTransEnvelopedRecipient(signingKey).setProvider("BC"));
+ 
+         OscarTools.HttpHeaderInfo hdrInfo
+                 = OscarTools.parseHttpHeader(ByteBlock.wrap(content));
+@@ -111,12 +118,12 @@
+         }
+         boolean verified;
+         try {
+-            verified = si.verify(signingCert, "BC");
++            verified = si.verify(new JcaSimpleSignerInfoVerifierBuilder().setProvider("BC").build(signingCert));
+ 
+-        } catch (CertificateExpiredException e) {
++        } catch (CMSVerifierCertificateNotValidException e) {
+             throw new InvalidSignatureException(e, si);
+ 
+-        } catch (CertificateNotYetValidException e) {
++        } catch (CMSException e) {
+             throw new InvalidSignatureException(e, si);
+         }
+         if (!verified) {
+diff -ru joscar-0.9.3r523.orig/client/src/net/kano/joustsim/oscar/oscar/service/icbm/secureim/SecureAimEncoder.java joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/icbm/secureim/SecureAimEncoder.java
+--- joscar-0.9.3r523.orig/client/src/net/kano/joustsim/oscar/oscar/service/icbm/secureim/SecureAimEncoder.java	2015-03-27 22:07:50.000000000 +0100
++++ joscar-0.9.3r523/client/src/net/kano/joustsim/oscar/oscar/service/icbm/secureim/SecureAimEncoder.java	2016-04-08 01:20:21.889818203 +0200
+@@ -39,12 +39,21 @@
+ import net.kano.joustsim.oscar.oscar.NoBuddyKeysException;
+ import net.kano.joscar.EncodedStringInfo;
+ import net.kano.joscar.MinimalEncoder;
++import org.bouncycastle.asn1.ASN1ObjectIdentifier;
++
+ import org.bouncycastle.cms.CMSEnvelopedData;
+ import org.bouncycastle.cms.CMSEnvelopedDataGenerator;
+ import org.bouncycastle.cms.CMSException;
+ import org.bouncycastle.cms.CMSProcessableByteArray;
+ import org.bouncycastle.cms.CMSSignedData;
+ import org.bouncycastle.cms.CMSSignedDataGenerator;
++import org.bouncycastle.cms.jcajce.JceKeyTransRecipientInfoGenerator;
++import org.bouncycastle.cms.jcajce.JceCMSContentEncryptorBuilder;
++import org.bouncycastle.cms.jcajce.JcaSignerInfoGeneratorBuilder;
++import org.bouncycastle.operator.ContentSigner;
++import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
++import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
++import org.bouncycastle.operator.OperatorCreationException;
+ 
+ import java.io.ByteArrayOutputStream;
+ import java.io.IOException;
+@@ -52,12 +61,13 @@
+ import java.security.NoSuchAlgorithmException;
+ import java.security.NoSuchProviderException;
+ import java.security.cert.X509Certificate;
++import java.security.cert.CertificateEncodingException;
+ 
+ public class SecureAimEncoder extends SecureAimCodec {
+     public synchronized byte[] encryptMsg(String msg)
+             throws NoSuchProviderException, NoSuchAlgorithmException,
+             CMSException, IOException, NoBuddyKeysException,
+-            NoLocalKeysException {
++            NoLocalKeysException, CertificateEncodingException, OperatorCreationException {
+ 
+         if (getLocalKeys() == null) throw new NoLocalKeysException();
+         CertificatePairHolder buddyCerts = getBuddyCerts();
+@@ -69,16 +79,18 @@
+         byte[] signedDataBlock = cmsSignString(msg);
+ 
+         CMSEnvelopedDataGenerator gen = new CMSEnvelopedDataGenerator();
+-        gen.addKeyTransRecipient(recip);
++        gen.addRecipientInfoGenerator(new JceKeyTransRecipientInfoGenerator(recip).setProvider("BC"));
++//        gen.addKeyTransRecipient(recip);
+         CMSEnvelopedData envData = gen.generate(
+                 new CMSProcessableByteArray(signedDataBlock),
+-                "2.16.840.1.101.3.4.1.2", "BC");
++                new JceCMSContentEncryptorBuilder(new ASN1ObjectIdentifier("2.16.840.1.101.3.4.1.2")).setProvider("BC").build());
++//                "2.16.840.1.101.3.4.1.2", "BC");
+ 
+         return envData.getEncoded();
+     }
+ 
+     protected synchronized byte[] cmsSignString(String msg) throws IOException,
+-            NoSuchProviderException, NoSuchAlgorithmException, CMSException {
++            NoSuchProviderException, NoSuchAlgorithmException, CMSException, CertificateEncodingException, OperatorCreationException {
+ 
+         ByteArrayOutputStream bout = new ByteArrayOutputStream();
+         OutputStreamWriter osw = new OutputStreamWriter(bout, "US-ASCII");
+@@ -108,15 +120,22 @@
+ 
+     protected synchronized byte[] signData(byte[] dataToSign)
+             throws NoSuchProviderException, NoSuchAlgorithmException,
+-            CMSException, IOException {
++            CMSException, IOException, CertificateEncodingException, OperatorCreationException {
+ 
+         byte[] signedData;
+         CMSSignedDataGenerator sgen = new CMSSignedDataGenerator();
+-        sgen.addSigner(getLocalKeys().getSigningKeys().getPrivateKey(),
+-                getLocalKeys().getSigningCertificate(),
+-                CMSSignedDataGenerator.DIGEST_MD5);
++        ContentSigner md5Signer = new JcaContentSignerBuilder(CMSSignedDataGenerator.DIGEST_MD5).setProvider("BC").build(getLocalKeys().getSigningKeys().getPrivateKey());
++        sgen.addSignerInfoGenerator(
++                new JcaSignerInfoGeneratorBuilder(
++                     new JcaDigestCalculatorProviderBuilder().setProvider("BC").build())
++                     .build(md5Signer, getLocalKeys().getSigningCertificate()));
+         CMSSignedData csd = sgen.generate(
+-                new CMSProcessableByteArray(dataToSign), true, "BC");
++                new CMSProcessableByteArray(dataToSign), true);
++//        sgen.addSigner(getLocalKeys().getSigningKeys().getPrivateKey(),
++//                getLocalKeys().getSigningCertificate(),
++//                CMSSignedDataGenerator.DIGEST_MD5);
++//        CMSSignedData csd = sgen.generate(
++//                new CMSProcessableByteArray(dataToSign), true, "BC");
+         signedData = csd.getEncoded();
+         return signedData;
+     }
