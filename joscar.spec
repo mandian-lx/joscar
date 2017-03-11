@@ -19,7 +19,7 @@ BuildRequires:	jpackage-utils
 BuildRequires:	ant
 BuildRequires:	bouncycastle
 BuildRequires:	bouncycastle-pkix
-BuildRequires:	jetbrainsannotations
+BuildRequires:	jetbrains-annotations
 BuildRequires:	jsocks
 BuildRequires:	junit
 
