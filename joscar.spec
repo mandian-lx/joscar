@@ -20,6 +20,7 @@ BuildArch:	noarch
 
 BuildRequires:	jpackage-utils
 BuildRequires:	ant
+BuildRequires:	aqute-bnd
 BuildRequires:	bouncycastle
 BuildRequires:	bouncycastle-pkix
 BuildRequires:	jetbrains-annotations
