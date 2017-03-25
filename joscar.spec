@@ -12,6 +12,9 @@ URL:		http://joust.kano.net/
 # find joscar-0.9.3r523 -name \.svn -type d -exec rm -fr ./{} \; 2> /dev/null
 # tar Jcf joscar-0.9.3r523.tar.xz joscar-0.9.3r523
 Source0:	%{name}-%{version}.tar.xz
+Source1:	%{name}-common.bnd
+Source2:	%{name}-client.bnd
+Source3:	%{name}-protocol.bnd
 Patch0:		%{name}-bcprov-upgrade-1.54.patch
 BuildArch:	noarch
 
@@ -69,6 +72,11 @@ find . -name "*.class" -delete
 # Apply all patches
 %patch0 -p1 -b .orig
 
+# .bnd
+sed -e "s|@VERSION@|%{version}|g" %{SOURCE1} > %{name}-common.bnd
+sed -e "s|@VERSION@|%{version}|g" %{SOURCE2} > %{name}-client.bnd
+sed -e "s|@VERSION@|%{version}|g" %{SOURCE3} > %{name}-protocol.bnd
+
 # Newer version of jsocks move Proxy class into CProxy
 sed -i -e 's|import socks.Proxy;|import socks.CProxy;|g' client/src/net/kano/joustsim/oscar/proxy/AimProxyInfo.java
 sed -i -e 's|public Proxy|public CProxy|g' client/src/net/kano/joustsim/oscar/proxy/AimProxyInfo.java
@@ -82,7 +90,15 @@ sed -i -e 's|SocksServerSocket(proxy.createSocksProxy(),|SocksServerSocket(proxy
 export CLASSPATH=$(build-classpath jetbrains-annotations bcprov bcpkix jsocks junit):$CLASSPATH
 %ant jars
 
-# add the index to jars
+# add OSGi manifest
+for m in common client protocol
+do
+  java -jar $(build-classpath aqute-bnd) wrap -properties %{name}-${m}.bnd dist/%{name}-${m}.jar
+  mv %{name}-${m}.bar dist/%{name}-${m}.jar
+done
+
+
+# add index
 %jar i dist/%{name}-common.jar
 %jar i dist/%{name}-client.jar
 %jar i dist/%{name}-protocol.jar

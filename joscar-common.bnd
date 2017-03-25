@@ -1,0 +1,11 @@
+Bundle-Name:         joscar-common
+Bundle-Version:      @VERSION@
+Import-Package:      *
+Bundle-License:      http://www.opensource.org/licenses/bsd-license.php
+Export-Package:      *
+Bundle-Description:  Connect to AOL Instant Messenger in Java
+Bundle-Vendor:       http://joust.kano.net/
+Bundle-DocURL:       http://joust.kano.net/docs/api
+Specification-Title: joscar-common
+Specification-Version: @VERSION@
+

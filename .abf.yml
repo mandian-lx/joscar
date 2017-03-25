@@ -1,2 +1,5 @@
 sources:
-  joscar-0.9.3r523.tar.xz:  7139fe992b96efa985c75c63685dea88d6c7ff9e
+  "joscar-client.bnd":   bf9db874718ae854ce8a4ffe692fed250609a5c3
+  "joscar-protocol.bnd":   3a3be565b34fabb9cdca0cda22ffff78ae31dcb7
+  "joscar-0.9.3r523.tar.xz":   7139fe992b96efa985c75c63685dea88d6c7ff9e
+  "joscar-common.bnd":   77e675df0275d72f02a6add6257b78924d40710c
